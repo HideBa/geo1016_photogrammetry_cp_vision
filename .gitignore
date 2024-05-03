@@ -1,0 +1,7 @@
+/Lab_1_Imaging_a_NoViewer
+/Lab_1_Imaging_b_WithWiewer
+**/3rd_party
+**/easy3d
+**/resources
+.DS_Store
+**/without_viewer.zip
