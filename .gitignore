@@ -5,3 +5,6 @@
 **/resources
 .DS_Store
 **/without_viewer.zip
+**/cmake-build-debug
+**/build
+**/.idea/
