@@ -83,136 +83,6 @@ bool Calibration::calibration(
                "results without ANY modification.\n\n"
             << std::flush;
 
-  /// Below are a few examples showing some useful data structures and
-  /// functions.
-
-  // This is a 1D array of 'double' values. Alternatively, you can use 'double
-  // mat[25]' but you cannot change it length. With 'std::vector', you can
-  // append/delete/insert elements, and much more. The 'std::vector' can store
-  // not only 'double', but also any other types of objects. In case you may
-  // want to learn more about 'std::vector' check here:
-  // https://en.cppreference.com/w/cpp/container/vector
-  //  std::vector<double> array = {1, 3, 3, 4,  7, 6, 2, 8, 2, 8, 3, 2, 4, 9,
-  //                               1, 7, 3, 23, 2, 3, 5, 2, 1, 5, 8, 9, 22};
-  //  array.push_back(5); // append 5 to the array (so the size will increase by
-  //  1). array.insert(array.end(), 10,
-  //               3); // append ten 3 (so the size will grow by 10).
-
-  /// To access the value of an element.
-  //  double a = array[2];
-
-  /// define a 2D vector/point
-  //  Vector2D b(1.1, 2.2);
-
-  //  /// define a 3D vector/point
-  //  Vector3D c(1.1, 2.2, 3.3);
-  //
-  //  /// get the Cartesian coordinates of a (a is treated as Homogeneous
-  //  /// coordinates)
-  //  Vector2D p = c.cartesian();
-  //
-  //  /// get the Homogeneous coordinates of p
-  //  Vector3D q = p.homogeneous();
-  //
-  //  /// the length of a vector
-  //  double len = p.length();
-  //  /// the squared length of a vector
-  //  double sqr_len = p.length2();
-  //
-  //  /// the dot product of two vectors
-  //  double dot_prod = dot(p, q);
-  //
-  //  /// the cross product of two vectors
-  //  Vector cross_prod = cross(c, q);
-  //
-  //  /// normalize this vector
-  //  cross_prod.normalize();
-
-  // Define an m-by-n double valued matrix.
-  // Here I use the above array to initialize it. You can also use A(i, j) to
-  // initialize/modify/access its elements.
-  //  const int m = 6, n = 5;
-  //  Matrix A(m, n,
-  //           array.data()); // 'array.data()' returns a pointer to the array.
-  //                          //    std::cout << "M: \n" << A << std::endl;
-
-  /// define a 3 by 4 matrix (and all elements initialized to 0.0)
-  //  Matrix M(3, 4, 0.0);
-
-  //  /// set first row by a vector
-  //  M.set_row(0, Vector4D(1.1, 2.2, 3.3, 4.4));
-  //
-  //  /// set second column by a vector
-  //  M.set_column(1, Vector3D(5.5, 5.5, 5.5));
-
-  //  /// define a 3 by 3 matrix (and all elements initialized to 0.0)
-  //  Matrix33 B;
-  //
-  //  /// define and initialize a 3 by 3 matrix
-  //  Matrix33 T(1.1, 2.2, 3.3, 0, 2.2, 3.3, 0, 0, 1);
-
-  /// define and initialize a 3 by 4 matrix
-  //  Matrix34 P(1.1, 2.2, 3.3, 0, 0, 2.2, 3.3, 1, 0, 0, 1, 1);
-
-  /// define a 15 by 9 matrix (and all elements initialized to 0.0)
-  //  Matrix W(15, 9, 0.0);
-  //  /// set the first row by a 9-dimensional vector
-  //  W.set_row(0, {0, 1, 2, 3, 4, 5, 6, 7,
-  //                8}); // {....} is equivalent to a std::vector<double>
-  //
-  //  /// get the number of rows.
-  //  int num_rows = W.rows();
-  //
-  //  /// get the number of columns.
-  //  int num_cols = W.cols();
-  //
-  //  /// get the the element at row 1 and column 2
-  //  double value = W(1, 2);
-  //
-  //  /// get the last column of a matrix
-  //  Vector last_column = W.get_column(W.cols() - 1);
-  //
-  //  /// define a 3 by 3 identity matrix
-  ////  Matrix33 I = Matrix::identity(3, 3, 1.0);
-  //
-  //  /// matrix-vector product
-  ////  Vector3D v = M * Vector4D(1, 2, 3, 4); // M is 3 by 4
-
-  //  Matrix U(m, m, 0.0); // initialized with 0s
-  //  Matrix D(m, n, 0.0); // initialized with 0s
-  //  Matrix V(n, n, 0.0); // initialized with 0s
-
-  // Compute the SVD decomposition of A
-  //  svd_decompose(A, U, D, V);
-
-  // Now let's check if the SVD result is correct
-
-  // Check 1: U is orthogonal, so U * U^T must be identity
-  //    std::cout << "U*U^T: \n" << U * transpose(U) << std::endl;
-
-  // Check 2: V is orthogonal, so V * V^T must be identity
-  //    std::cout << "V*V^T: \n" << V * transpose(V) << std::endl;
-
-  // Check 3: D must be a diagonal matrix
-  //    std::cout << "D: \n" << D << std::endl;
-
-  // Check 4: according to the definition, A = U * D * V^T
-  //    std::cout << "M - U * D * V^T: \n" << A - U * D * transpose(V) <<
-  //    std::endl;
-
-  // Compute the inverse of a matrix
-  //  Matrix invT;
-  //  inverse(T, invT);
-  // Let's check if the inverse is correct
-  //    std::cout << "B * invB: \n" << B * invB << std::endl;
-
-  // TODO: the above code just demonstrates some useful data structures and
-  // APIs. Please remove all above code in your
-  //       final submission.
-
-  //--------------------------------------------------------------------------------------------------------------
-  // implementation starts ...
-
   std::cout
       << "\n[Liangliang]:\n"
          "\tThe input parameters of this function are:\n"
@@ -266,19 +136,6 @@ bool Calibration::calibration(
     P(2 * i + 1, 11) = -y;
   }
 
-  // print out matrix P
-  std::cout << "after P: \n" << P << std::endl;
-  std::cout << "P0: " << P.get(0, 0) << " " << P.get(0, 1) << " " << P.get(0, 2)
-            << " " << P.get(0, 3) << std::endl;
-  std::cout << "P1: " << P.get(1, 0) << " " << P.get(1, 1) << " " << P.get(1, 2)
-            << " " << P.get(1, 3) << std::endl;
-  std::cout << "P2: " << P.get(2, 0) << " " << P.get(2, 1) << " " << P.get(2, 2)
-            << " " << P.get(2, 3) << std::endl;
-  std::cout << "P3: " << P.get(3, 0) << " " << P.get(3, 1) << " " << P.get(3, 2)
-            << " " << P.get(3, 3) << std::endl;
-  std::cout << "P4: " << P.get(4, 0) << " " << P.get(4, 1) << " " << P.get(4, 2)
-            << " " << P.get(4, 3) << std::endl;
-
   // TODO: solve for M (the whole projection matrix, i.e., M = K * [R, t])
   // using SVD decomposition.
   //   Optional: you can check if your M is correct by applying M on the 3D
@@ -288,24 +145,16 @@ bool Calibration::calibration(
   Matrix D(2 * points_3d.size(), 12, 0.0);
   Matrix V(12, 12, 0.0);
   svd_decompose(P, U, D, V);
-  Vector vec_M(V.get_column(11));
+  Vector vec_M(V.get_row(11));
 
   ;
   Matrix M(3, 4, vec_M.data());
 
   //  TODO: check svd
+  double sum_error = 0;
   for (size_t i = 0; i < points_3d.size(); i++) {
     Vector3D point = points_3d[i];
     Vector2D point2d = points_2d[i];
-    double expected_x = (M.get(0, 0) * point.x() + M.get(0, 1) * point.y() +
-                         M.get(0, 2) * point.z() + M.get(0, 3)) /
-                        (M.get(2, 0) * point.x() + M.get(2, 1) * point.y() +
-                         M.get(2, 2) * point.z() + M.get(2, 3));
-    double expected_y = (M.get(1, 0) * point.x() + M.get(1, 1) * point.y() +
-                         M.get(1, 2) * point.z() + M.get(1, 3)) /
-                        (M.get(2, 0) * point.x() + M.get(2, 1) * point.y() +
-                         M.get(2, 2) * point.z() + M.get(2, 3));
-
     double x_res = M.get(0, 0) * point.x() + M.get(0, 1) * point.y() +
                    M.get(0, 2) * point.z() + M.get(0, 3) -
                    M.get(2, 0) * point2d.x() * point.x() -
@@ -316,27 +165,40 @@ bool Calibration::calibration(
                    M.get(2, 0) * point2d.y() * point.x() -
                    M.get(2, 1) * point2d.y() * point.y() -
                    M.get(2, 2) * point2d.y() * point.z() - M.get(2, 3);
+    sum_error += sqrt(x_res * x_res + y_res * y_res);
     std::cout << "x_res: " << x_res << " y_res: " << y_res << std::endl;
   }
+  double mse = sum_error / points_3d.size();
+  std::cout << "MSE: " << mse << std::endl;
 
   // decompose M into A and b M = [A b]
-  Matrix33 A(M.get(0, 0), M.get(0, 1), M.get(0, 2), M.get(1, 0), M.get(1, 1),
-             M.get(1, 2), M.get(2, 0), M.get(2, 1), M.get(2, 2));
+  Matrix33 A;
+  A.set_row(0, Vector3D(M.get(0, 0), M.get(0, 1), M.get(0, 2)));
+  A.set_row(1, Vector3D(M.get(1, 0), M.get(1, 1), M.get(1, 2)));
+  A.set_row(2, Vector3D(M.get(2, 0), M.get(2, 1), M.get(2, 2)));
   Vector3D b(M.get(0, 3), M.get(1, 3), M.get(2, 3));
   auto a1 = A.get_row(0);
   auto a2 = A.get_row(1);
   auto a3 = A.get_row(2);
-  auto b1 = b[0];
-  auto b2 = b[1];
-  auto b3 = b[2];
+
+  std::cout << "a1: " << a1 << " a2: " << a2 << " a3: " << a3 << " b: " << b
+            << std::endl;
 
   // TODO: extract intrinsic parameters from M.
   auto p = 1 / norm(a3);
   auto cos_theta = (dot(cross(a1, a3), cross(a2, a3))) /
-                   (dot(norm(cross(a1, a3)), norm(cross(a2, a3))));
+                   (norm(cross(a1, a3)) * norm(cross(a2, a3)));
+  if (norm(cross(a1, a3)) == 0 || norm(cross(a2, a3)) == 0) {
+    std::cout << "cross product is zero" << std::endl;
+    return false;
+  }
   auto sin_theta = sqrt(1 - cos_theta * cos_theta);
+  std::cout << "cos_theta: " << cos_theta << " sin_theta: " << sin_theta
+            << std::endl;
   auto alpha = p * p * norm(cross(a1, a3)) * sin_theta;
   auto beta = p * p * norm(cross(a2, a3)) * sin_theta;
+  std::cout << "p: " << p << " alpha: " << alpha << " beta: " << beta
+            << std::endl;
   fx = alpha;
   fy = beta / sin_theta;
   s = -alpha * (cos_theta / sin_theta);
@@ -347,6 +209,10 @@ bool Calibration::calibration(
             << " s: " << s << std::endl;
 
   // TODO: extract extrinsic parameters from M.
+  if (norm(cross(a2, a3)) == 0) {
+    std::cout << "cross product is zero" << std::endl;
+    return false;
+  }
   auto r1 = cross(a2, a3) / norm(cross(a2, a3));
   auto r3 = p * a3;
   auto r2 = cross(r3, r1);
