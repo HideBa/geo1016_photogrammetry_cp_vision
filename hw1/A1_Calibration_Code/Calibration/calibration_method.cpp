@@ -136,6 +136,17 @@ bool Calibration::calibration(
     P(2 * i + 1, 11) = -y;
   }
 
+  std::cout << "p0 " << P.get(0, 0) << " " << P.get(0, 1) << " " << P.get(0, 2)
+            << " " << P.get(0, 3) << " " << P.get(0, 4) << " " << P.get(0, 5)
+            << " " << P.get(0, 6) << " " << P.get(0, 7) << " " << P.get(0, 8)
+            << " " << P.get(0, 9) << " " << P.get(0, 10) << " " << P.get(0, 11)
+            << std::endl;
+  std::cout << "p0 " << P.get(1, 0) << " " << P.get(1, 1) << " " << P.get(1, 2)
+            << " " << P.get(1, 3) << " " << P.get(1, 4) << " " << P.get(1, 5)
+            << " " << P.get(1, 6) << " " << P.get(1, 7) << " " << P.get(1, 8)
+            << " " << P.get(1, 9) << P.get(1, 11) << " " << P.get(1, 11)
+            << std::endl;
+
   // TODO: solve for M (the whole projection matrix, i.e., M = K * [R, t])
   // using SVD decomposition.
   //   Optional: you can check if your M is correct by applying M on the 3D
@@ -145,9 +156,8 @@ bool Calibration::calibration(
   Matrix D(2 * points_3d.size(), 12, 0.0);
   Matrix V(12, 12, 0.0);
   svd_decompose(P, U, D, V);
-  Vector vec_M(V.get_row(11));
+  Vector vec_M(V.get_column(11));
 
-  ;
   Matrix M(3, 4, vec_M.data());
 
   //  TODO: check svd
@@ -155,21 +165,24 @@ bool Calibration::calibration(
   for (size_t i = 0; i < points_3d.size(); i++) {
     Vector3D point = points_3d[i];
     Vector2D point2d = points_2d[i];
-    double x_res = M.get(0, 0) * point.x() + M.get(0, 1) * point.y() +
-                   M.get(0, 2) * point.z() + M.get(0, 3) -
-                   M.get(2, 0) * point2d.x() * point.x() -
-                   M.get(2, 1) * point2d.x() * point.y() -
-                   M.get(2, 2) * point2d.x() * point.z() - M.get(2, 3);
-    double y_res = M.get(1, 0) * point.x() + M.get(1, 1) * point.y() +
-                   M.get(1, 2) * point.z() + M.get(1, 3) -
-                   M.get(2, 0) * point2d.y() * point.x() -
-                   M.get(2, 1) * point2d.y() * point.y() -
-                   M.get(2, 2) * point2d.y() * point.z() - M.get(2, 3);
-    sum_error += sqrt(x_res * x_res + y_res * y_res);
-    std::cout << "x_res: " << x_res << " y_res: " << y_res << std::endl;
+    Vector3D projected2d_h = M * point.homogeneous();
+    Vector2D projected2d = projected2d_h.cartesian();
+    auto diff = (point2d - projected2d).length2();
+    //    double x_res = M.get(0, 0) * point.x() + M.get(0, 1) * point.y() +
+    //                   M.get(0, 2) * point.z() + M.get(0, 3) -
+    //                   M.get(2, 0) * point2d.x() * point.x() -
+    //                   M.get(2, 1) * point2d.x() * point.y() -
+    //                   M.get(2, 2) * point2d.x() * point.z() - M.get(2, 3);
+    //    double y_res = M.get(1, 0) * point.x() + M.get(1, 1) * point.y() +
+    //                   M.get(1, 2) * point.z() + M.get(1, 3) -
+    //                   M.get(2, 0) * point2d.y() * point.x() -
+    //                   M.get(2, 1) * point2d.y() * point.y() -
+    //                   M.get(2, 2) * point2d.y() * point.z() - M.get(2, 3);
+    sum_error += diff;
   }
-  double mse = sum_error / points_3d.size();
-  std::cout << "MSE: " << mse << std::endl;
+  double mean_reprojection_error = sum_error / points_3d.size();
+  std::cout << "Mean Reprojection Error: " << mean_reprojection_error
+            << std::endl;
 
   // decompose M into A and b M = [A b]
   Matrix33 A;
@@ -177,15 +190,16 @@ bool Calibration::calibration(
   A.set_row(1, Vector3D(M.get(1, 0), M.get(1, 1), M.get(1, 2)));
   A.set_row(2, Vector3D(M.get(2, 0), M.get(2, 1), M.get(2, 2)));
   Vector3D b(M.get(0, 3), M.get(1, 3), M.get(2, 3));
+
+  // TODO: extract intrinsic parameters from M.
+  //  TODO: check if a3 is not zero
+  //  MEMO: sign of rho should be positive so that object comes in front of the
+  //  camera
+  auto p = 1 / norm(A.get_row(2));
+
   auto a1 = A.get_row(0);
   auto a2 = A.get_row(1);
   auto a3 = A.get_row(2);
-
-  std::cout << "a1: " << a1 << " a2: " << a2 << " a3: " << a3 << " b: " << b
-            << std::endl;
-
-  // TODO: extract intrinsic parameters from M.
-  auto p = 1 / norm(a3);
   auto cos_theta = (dot(cross(a1, a3), cross(a2, a3))) /
                    (norm(cross(a1, a3)) * norm(cross(a2, a3)));
   if (norm(cross(a1, a3)) == 0 || norm(cross(a2, a3)) == 0) {
@@ -193,20 +207,19 @@ bool Calibration::calibration(
     return false;
   }
   auto sin_theta = sqrt(1 - cos_theta * cos_theta);
-  std::cout << "cos_theta: " << cos_theta << " sin_theta: " << sin_theta
-            << std::endl;
   auto alpha = p * p * norm(cross(a1, a3)) * sin_theta;
   auto beta = p * p * norm(cross(a2, a3)) * sin_theta;
-  std::cout << "p: " << p << " alpha: " << alpha << " beta: " << beta
-            << std::endl;
+
   fx = alpha;
   fy = beta / sin_theta;
   s = -alpha * (cos_theta / sin_theta);
   cx = p * p * dot(a1, a3);
   cy = p * p * dot(a2, a3);
   // print out intrinsic parameters
+  std::cout << "p (rho) : " << p << std::endl;
   std::cout << "fx: " << fx << " fy: " << fy << " cx: " << cx << " cy: " << cy
-            << " s: " << s << std::endl;
+            << " s: " << s << " cos theta: " << cos_theta
+            << " sin theta: " << sin_theta << std::endl;
 
   // TODO: extract extrinsic parameters from M.
   if (norm(cross(a2, a3)) == 0) {
