@@ -151,7 +151,7 @@ bool Triangulation::triangulation(
 
   Matrix Wq(points_0.size(), 9, 0.0);
   for (size_t i = 0; i < normalised_points_0.size(); i++) {
-    auto p = points_0[i];
+    auto p = normalised_points_0[i];
     auto p_prime = normalised_points_1[i];
     auto u1 = p.x(), v1 = p.y();
     auto u1_prime = p_prime.x(), v1_prime = p_prime.y();
@@ -163,7 +163,7 @@ bool Triangulation::triangulation(
 
   auto fq_error =
       check_fundamental_matrix(Fq, normalised_points_0, normalised_points_1);
-
+  std::cout << "fq error: " << fq_error << std::endl;
   // Fundamental matrix
   Matrix33 F = transpose(T_prime) * Fq * T;
   std::cout << "F: " << F.get(0, 0) << " " << F.get(0, 1) << " " << F.get(0, 2)
@@ -232,32 +232,32 @@ std::vector<Vector2D> normalize_points(const std::vector<Vector2D> points,
 
 Matrix33
 normalisation_transformation_matrix(const std::vector<Vector2D> &points) {
-  double p_x_sum, p_y_sum = 0.0;
+  double p_x_sum = 0.0, p_y_sum = 0.0;
+  int count = 0;
   for (auto p : points) {
+    count++;
     p_x_sum += p.x();
     p_y_sum += p.y();
   }
   Vector2D centroid(p_x_sum / points.size(), p_y_sum / points.size());
-  std::cout << "centroid : " << centroid.x() << "    " << centroid.y()
-            << std::endl;
+
   double dist_sum = 0.0;
   for (auto p : points) {
     double dx = p.x() - centroid.x();
     double dy = p.y() - centroid.y();
-    dist_sum = sqrt(dx * dx + dy * dy);
+    dist_sum += sqrt(dx * dx + dy * dy);
   }
   double mean_dist = dist_sum / points.size();
 
-  std::cout << "mean dist: " << mean_dist << std::endl;
   double scale = sqrt(2) / mean_dist;
 
-  std::cout << "scale : " << scale << std::endl;
-  Matrix33 T(3, 3, 0.0);
+  Matrix33 T(0.0);
   T.set(0, 0, scale);
   T.set(1, 1, scale);
   T.set(0, 2, -scale * centroid.x());
   T.set(1, 2, -scale * centroid.y());
   T.set(2, 2, 1);
+  std::cout << "matrix T: " << T << std::endl;
   return T;
 };
 
