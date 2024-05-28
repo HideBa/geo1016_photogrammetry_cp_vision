@@ -41,26 +41,34 @@ std::pair<Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E);
 
 Vector3D reconstruct(const Matrix34 &M, const Vector2D &p0, const Vector2D &p1);
 
+double check_fundamental_matrix(const Matrix33 &F,
+                                std::vector<Vector2D> points_0,
+                                std::vector<Vector2D> points_2);
+
+double check_normalisation(const Matrix33 &T, std::vector<Vector2D> points_0,
+                           std::vector<Vector2D> points_1);
 /**
- * TODO: Finish this function for reconstructing 3D geometry from corresponding
- * image points.
- * @return True on success, otherwise false. On success, the reconstructed 3D
- * points must be written to 'points_3d' and the recovered relative pose must be
- * written to R and t.
+ * TODO: Finish this function for reconstructing 3D geometry from
+ * corresponding image points.
+ * @return True on success, otherwise false. On success, the reconstructed
+ * 3D points must be written to 'points_3d' and the recovered relative pose
+ * must be written to R and t.
  */
 bool Triangulation::triangulation(
-    double fx, double fy, /// input: the focal lengths (same for both cameras)
-    double cx, double cy, /// input: the principal point (same for both cameras)
-    double s,             /// input: the skew factor (same for both cameras)
+    double fx,
+    double fy, /// input: the focal lengths (same for both cameras)
+    double cx,
+    double cy, /// input: the principal point (same for both cameras)
+    double s,  /// input: the skew factor (same for both cameras)
     const std::vector<Vector2D>
         &points_0, /// input: 2D image points in the 1st image.
     const std::vector<Vector2D>
         &points_1, /// input: 2D image points in the 2nd image.
     std::vector<Vector3D> &points_3d, /// output: reconstructed 3D points
-    Matrix33 &R, /// output: 3 by 3 matrix, which is the recovered rotation of
+    Matrix33 &R, /// output: 3 by 3 matrix, which is the recovered rotation
+                 /// of the 2nd camera
+    Vector3D &t  /// output: 3D vector, which is the recovered translation of
                  /// the 2nd camera
-    Vector3D &t /// output: 3D vector, which is the recovered translation of the
-                /// 2nd camera
 ) const {
   /// NOTE: there might be multiple workflows for reconstructing 3D geometry
   /// from corresponding image points.
@@ -103,60 +111,6 @@ bool Triangulation::triangulation(
                "results without ANY modification.\n\n"
             << std::flush;
 
-  /// Below are a few examples showing some useful data structures and APIs.
-
-  //  /// define a 2D vector/point
-  //  Vector2D b(1.1, 2.2);
-  //
-  //  /// define a 3D vector/point
-  //  Vector3D a(1.1, 2.2, 3.3);
-  //
-  //  /// get the Cartesian coordinates of a (a is treated as Homogeneous
-  //  /// coordinates)
-  //  Vector2D p = a.cartesian();
-  //
-  //  /// get the Homogeneous coordinates of p
-  //  Vector3D q = p.homogeneous();
-  //
-  //  /// define a 3 by 3 matrix (and all elements initialized to 0.0)
-  //  Matrix33 A;
-  //
-  //  /// define and initialize a 3 by 3 matrix
-  //  Matrix33 T(1.1, 2.2, 3.3, 0, 2.2, 3.3, 0, 0, 1);
-  //
-  //  /// define and initialize a 3 by 4 matrix
-  //  Matrix34 M(1.1, 2.2, 3.3, 0, 0, 2.2, 3.3, 1, 0, 0, 1, 1);
-  //
-  //  /// set first row by a vector
-  //  M.set_row(0, Vector4D(1.1, 2.2, 3.3, 4.4));
-  //
-  //  /// set second column by a vector
-  //  M.set_column(1, Vector3D(5.5, 5.5, 5.5));
-  //
-  //  /// define a 15 by 9 matrix (and all elements initialized to 0.0)
-  //  Matrix W(15, 9, 0.0);
-  //  /// set the first row by a 9-dimensional vector
-  //  W.set_row(0, {0, 1, 2, 3, 4, 5, 6, 7,
-  //                8}); // {....} is equivalent to a std::vector<double>
-  //
-  //  /// get the number of rows.
-  //  int num_rows = W.rows();
-  //
-  //  /// get the number of columns.
-  //  int num_cols = W.cols();
-  //
-  //  /// get the the element at row 1 and column 2
-  //  double value = W(1, 2);
-  //
-  //  /// get the last column of a matrix
-  //  Vector last_column = W.get_column(W.cols() - 1);
-  //
-  //  /// define a 3 by 3 identity matrix
-  //  Matrix33 I = Matrix::identity(3, 3, 1.0);
-  //
-  //  /// matrix-vector product
-  //  Vector3D v = M * Vector4D(1, 2, 3, 4); // M is 3 by 4
-
   /// For more functions of Matrix and Vector, please refer to 'matrix.h' and
   /// 'vector.h'
 
@@ -190,6 +144,9 @@ bool Triangulation::triangulation(
   auto T = normalisation_transformation_matrix(points_0);
   auto T_prime = normalisation_transformation_matrix(points_1);
   auto normalised_points_0 = normalize_points(points_0, T);
+  std::cout << "normalised point 1: " << normalised_points_0[0].x() << " "
+            << normalised_points_0[0].y() << std::endl;
+
   auto normalised_points_1 = normalize_points(points_1, T_prime);
 
   Matrix Wq(points_0.size(), 9, 0.0);
@@ -203,12 +160,19 @@ bool Triangulation::triangulation(
   }
 
   Matrix33 Fq = estimate_fundamental_matrix(Wq);
+
+  auto fq_error =
+      check_fundamental_matrix(Fq, normalised_points_0, normalised_points_1);
+
   // Fundamental matrix
   Matrix33 F = transpose(T_prime) * Fq * T;
   std::cout << "F: " << F.get(0, 0) << " " << F.get(0, 1) << " " << F.get(0, 2)
             << " " << F.get(1, 0) << " " << F.get(1, 1) << " " << F.get(1, 2)
             << " " << F.get(2, 0) << " " << F.get(2, 1) << " " << F.get(2, 2)
             << std::endl;
+
+  auto diff = check_fundamental_matrix(F, points_0, points_1);
+  std::cout << "diff: " << diff << std::endl;
 
   // Essential matrix
   Matrix33 K(fx, s, cx, 0, fy, cy, 0, 0, 1);
@@ -235,8 +199,7 @@ bool Triangulation::triangulation(
   //      - triangulate a pair of image points (i.e., compute the 3D coordinates
   //      for each corresponding point pair)
   for (size_t i = 0; i < normalised_points_0.size(); i++) {
-    auto point_3d =
-        reconstruct(M, normalised_points_0[i], normalised_points_1[i]);
+    auto point_3d = reconstruct(M, points_0[i], points_1[i]);
     points_3d.push_back(point_3d);
   }
   // TODO: Don't forget to
@@ -275,6 +238,8 @@ normalisation_transformation_matrix(const std::vector<Vector2D> &points) {
     p_y_sum += p.y();
   }
   Vector2D centroid(p_x_sum / points.size(), p_y_sum / points.size());
+  std::cout << "centroid : " << centroid.x() << "    " << centroid.y()
+            << std::endl;
   double dist_sum = 0.0;
   for (auto p : points) {
     double dx = p.x() - centroid.x();
@@ -282,13 +247,17 @@ normalisation_transformation_matrix(const std::vector<Vector2D> &points) {
     dist_sum = sqrt(dx * dx + dy * dy);
   }
   double mean_dist = dist_sum / points.size();
+
+  std::cout << "mean dist: " << mean_dist << std::endl;
   double scale = sqrt(2) / mean_dist;
 
-  Matrix33 T = Matrix::identity(3, 3, 1.0);
+  std::cout << "scale : " << scale << std::endl;
+  Matrix33 T(3, 3, 0.0);
   T.set(0, 0, scale);
   T.set(1, 1, scale);
   T.set(0, 2, -scale * centroid.x());
   T.set(1, 2, -scale * centroid.y());
+  T.set(2, 2, 1);
   return T;
 };
 
@@ -318,8 +287,8 @@ std::pair<Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E) {
   svd_decompose(E, U, D, Vt);
   Matrix33 W(0, -1, 0, 1, 0, 0, 0, 0, 1);
   Matrix33 Z(0, 1, 0, -1, 0, 0, 0, 0, 0);
-  Matrix33 R1 = U * W * Vt;
-  Matrix33 R2 = U * transpose(W) * Vt;
+  Matrix33 R1 = U * W * transpose(Vt);
+  Matrix33 R2 = U * transpose(W) * transpose(Vt);
   std::cout << "R1: " << R1.get(0, 0) << " " << R1.get(0, 1) << " "
             << R1.get(0, 2) << " " << R1.get(1, 0) << " " << R1.get(1, 1) << " "
             << R1.get(1, 2) << " " << R1.get(2, 0) << " " << R1.get(2, 1) << " "
@@ -358,6 +327,27 @@ Vector3D reconstruct(const Matrix34 &M, const Vector2D &p0,
   Matrix D(4, 4);
   Matrix Vt(4, 4);
   svd_decompose(A, U, D, Vt);
-  Vector P = Vt.get_column(3);
-  return Vector3D(P[0], P[1], P[2]);
+  Vector4D h_P = Vector4D(Vt.get_column(3));
+  Vector3D P = h_P.cartesian();
+  return P;
+}
+
+double check_fundamental_matrix(const Matrix33 &F,
+                                std::vector<Vector2D> points_0,
+                                std::vector<Vector2D> points_1) {
+  auto sum_error = 0.0;
+  // Debuginng--------------------------
+  for (size_t i = 0; i < points_0.size(); i++) {
+    auto point0 = points_0[i];
+    auto point1 = points_1[i];
+    auto hp = point0.homogeneous();
+    auto reprojected = Vector3D(F * hp);
+    auto point0_reprojected = reprojected.cartesian();
+    auto diff_x = point0_reprojected.x() - point1.x();
+    auto diff_y = point0_reprojected.y() - point1.y();
+    auto diff = sqrt(diff_x * diff_x + diff_y * diff_y);
+    sum_error += diff;
+  }
+  auto mean_error = sum_error / points_0.size();
+  return mean_error;
 }
