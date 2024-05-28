@@ -30,15 +30,16 @@
 
 using namespace easy3d;
 
-
 Matrix33
 normalisation_transformation_matrix(const std::vector<Vector2D> &points);
-std::vector<Vector2D> normalize_points(const std::vector<Vector2D> points, Matrix33 T);
+std::vector<Vector2D> normalize_points(const std::vector<Vector2D> points,
+                                       Matrix33 T);
 
 Matrix33 estimate_fundamental_matrix(const Matrix &W);
 
+std::pair<Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E);
 
-std::pair<Matrix33, Vector3D> recover_extrinsic(Matrix33 E);
+Vector3D reconstruct(const Matrix34 &M, const Vector2D &p0, const Vector2D &p1);
 
 /**
  * TODO: Finish this function for reconstructing 3D geometry from corresponding
@@ -178,14 +179,14 @@ bool Triangulation::triangulation(
     assert(p.x() >= 0);
     assert(p.y() >= 0);
   }
-  assert(points_0.size() == points_1.size() && points_0.size() >=8);
+  assert(points_0.size() == points_1.size() && points_0.size() >= 8);
 
   // TODO: Estimate relative pose of two views. This can be subdivided into
   //      - estimate the fundamental matrix F;
   //      - compute the essential matrix E;
   //      - recover rotation R and t.
 
-  //Normalise points
+  // Normalise points
   auto T = normalisation_transformation_matrix(points_0);
   auto T_prime = normalisation_transformation_matrix(points_1);
   auto normalised_points_0 = normalize_points(points_0, T);
@@ -198,24 +199,46 @@ bool Triangulation::triangulation(
     auto u1 = p.x(), v1 = p.y();
     auto u1_prime = p_prime.x(), v1_prime = p_prime.y();
     Wq.set_row(i, {u1 * u1_prime, v1 * u1_prime, u1_prime, u1 * v1_prime,
-                  v1 * v1_prime, v1_prime, u1, v1, 1});
+                   v1 * v1_prime, v1_prime, u1, v1, 1});
   }
 
   Matrix33 Fq = estimate_fundamental_matrix(Wq);
-  //Fundamental matrix
-  Matrix33 F = transpose(T_prime)*Fq*T;
-  //Essential matrix
+  // Fundamental matrix
+  Matrix33 F = transpose(T_prime) * Fq * T;
+  std::cout << "F: " << F.get(0, 0) << " " << F.get(0, 1) << " " << F.get(0, 2)
+            << " " << F.get(1, 0) << " " << F.get(1, 1) << " " << F.get(1, 2)
+            << " " << F.get(2, 0) << " " << F.get(2, 1) << " " << F.get(2, 2)
+            << std::endl;
+
+  // Essential matrix
   Matrix33 K(fx, s, cx, 0, fy, cy, 0, 0, 1);
-  Matrix33 E = transpose(K)*F*K;
+  Matrix33 E = transpose(K) * F * K;
+  std::cout << "E: " << E.get(0, 0) << " " << E.get(0, 1) << " " << E.get(0, 2)
+            << " " << E.get(1, 0) << " " << E.get(1, 1) << " " << E.get(1, 2)
+            << " " << E.get(2, 0) << " " << E.get(2, 1) << " " << E.get(2, 2)
+            << std::endl;
 
   auto [R1, t1] = recover_extrinsic(E);
 
-
+  R = R1;
+  Matrix34 extrinsic(R.get(0, 0), R.get(0, 1), R.get(0, 2), t.x(), R.get(1, 0),
+                     R.get(1, 1), R.get(1, 2), t.y(), R.get(2, 0), R.get(2, 1),
+                     R.get(2, 2), t.z());
+  std::cout << "R: " << R.get(0, 0) << " " << R.get(0, 1) << " " << R.get(0, 2)
+            << " " << R.get(1, 0) << " " << R.get(1, 1) << " " << R.get(1, 2)
+            << " " << R.get(2, 0) << " " << R.get(2, 1) << " " << R.get(2, 2)
+            << std::endl;
+  std::cout << "t1: " << t1[0] << " " << t1[1] << " " << t1[2] << std::endl;
+  Matrix34 M = K * extrinsic;
 
   // TODO: Reconstruct 3D points. The main task is
   //      - triangulate a pair of image points (i.e., compute the 3D coordinates
   //      for each corresponding point pair)
-
+  for (size_t i = 0; i < normalised_points_0.size(); i++) {
+    auto point_3d =
+        reconstruct(M, normalised_points_0[i], normalised_points_1[i]);
+    points_3d.push_back(point_3d);
+  }
   // TODO: Don't forget to
   //          - write your recovered 3D points into 'points_3d' (so the viewer
   //          can visualize the 3D points for you);
@@ -233,14 +256,15 @@ bool Triangulation::triangulation(
   return points_3d.size() > 0;
 }
 
-std::vector<Vector2D> normalize_points(const std::vector<Vector2D> points, Matrix33 T){
+std::vector<Vector2D> normalize_points(const std::vector<Vector2D> points,
+                                       Matrix33 T) {
   std::vector<Vector2D> normalised_points;
-  for (const auto p:points){
+  for (const auto p : points) {
     auto homogeneous_p = p.homogeneous();
-    Vector3D normalised_p = T*homogeneous_p;
+    Vector3D normalised_p = T * homogeneous_p;
     normalised_points.push_back(normalised_p.cartesian());
   }
-  return  normalised_points;
+  return normalised_points;
 }
 
 Matrix33
@@ -252,24 +276,24 @@ normalisation_transformation_matrix(const std::vector<Vector2D> &points) {
   }
   Vector2D centroid(p_x_sum / points.size(), p_y_sum / points.size());
   double dist_sum = 0.0;
-  for (auto p: points){
-    double dx = p.x() -centroid.x();
+  for (auto p : points) {
+    double dx = p.x() - centroid.x();
     double dy = p.y() - centroid.y();
-    dist_sum = sqrt(dx*dx + dy*dy);
+    dist_sum = sqrt(dx * dx + dy * dy);
   }
-  double mean_dist = dist_sum/points.size();
-  double scale = sqrt(2)/mean_dist;
+  double mean_dist = dist_sum / points.size();
+  double scale = sqrt(2) / mean_dist;
 
-  Matrix33 T = Matrix::identity(3,3,1.0);
+  Matrix33 T = Matrix::identity(3, 3, 1.0);
   T.set(0, 0, scale);
-  T.set(1,1,scale);
-  T.set(0, 2, -scale*centroid.x());
-  T.set(1, 2, -scale*centroid.y());
-return T;
+  T.set(1, 1, scale);
+  T.set(0, 2, -scale * centroid.x());
+  T.set(1, 2, -scale * centroid.y());
+  return T;
 };
 
 Matrix33 estimate_fundamental_matrix(const Matrix &W) { // W is Nx9 matrix
-  Matrix U(W.rows(), 0.0);
+  Matrix U(W.rows(), W.rows(), 0.0);
   Matrix D(W.rows(), 9, 0.0);
   Matrix Vt(9, 9, 0.0);
   svd_decompose(W, U, D, Vt);
@@ -277,14 +301,14 @@ Matrix33 estimate_fundamental_matrix(const Matrix &W) { // W is Nx9 matrix
   Matrix F_hat(3, 3, vec_F_hat.data());
 
   U = Matrix(3, 3, 0.0);
-  D = Matrix(3,3,0.0);
+  D = Matrix(3, 3, 0.0);
   Vt = Matrix(3, 3, 0.0);
   svd_decompose(F_hat, U, D, Vt);
-  D.set(2,2, 0.0); //This is for the best rank-2 approximation
+  D.set(2, 2, 0.0); // This is for the best rank-2 approximation
 
-  Matrix F(3 ,3);
-  F = U*D*Vt;
-  return  F;
+  Matrix F(3, 3);
+  F = U * D * Vt;
+  return F;
 }
 
 std::pair<Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E) {
@@ -292,7 +316,48 @@ std::pair<Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E) {
   Matrix33 D(0.0);
   Matrix33 Vt(0.0);
   svd_decompose(E, U, D, Vt);
+  Matrix33 W(0, -1, 0, 1, 0, 0, 0, 0, 1);
+  Matrix33 Z(0, 1, 0, -1, 0, 0, 0, 0, 0);
+  Matrix33 R1 = U * W * Vt;
+  Matrix33 R2 = U * transpose(W) * Vt;
+  std::cout << "R1: " << R1.get(0, 0) << " " << R1.get(0, 1) << " "
+            << R1.get(0, 2) << " " << R1.get(1, 0) << " " << R1.get(1, 1) << " "
+            << R1.get(1, 2) << " " << R1.get(2, 0) << " " << R1.get(2, 1) << " "
+            << R1.get(2, 2) << std::endl;
+  std::cout << "R2: " << R2.get(0, 0) << " " << R2.get(0, 1) << " "
+            << R2.get(0, 2) << " " << R2.get(1, 0) << " " << R2.get(1, 1) << " "
+            << R2.get(1, 2) << " " << R2.get(2, 0) << " " << R2.get(2, 1) << " "
+            << R2.get(2, 2) << std::endl;
+  auto det = determinant(R1);
+  auto det2 = determinant(R2);
 
-  
-  return std::pair<Matrix33, Vector3D>(Matrix33(), Vector3D());
+  Matrix33 R;
+  if (determinant(R1) > 0) { // TODO: consider sign of determinant
+    R = R1;
+  } else if (determinant(R2) > 0) {
+    R = R2;
+  } else {
+    R = R1; // TODO: check later
+  }
+
+  auto tx = U.get_column(2); // TODO: consider sign of t (+-)
+
+  return std::pair<Matrix33, Vector3D>(R, tx);
+}
+
+Vector3D reconstruct(const Matrix34 &M, const Vector2D &p0,
+                     const Vector2D &p1) {
+
+  Matrix44 A;
+  A.set_row(0, p0.x() * M.get_row(2) - M.get_row(0));
+  A.set_row(1, p0.y() * M.get_row(2) - M.get_row(1));
+  A.set_row(2, p1.x() * M.get_row(2) - M.get_row(0));
+  A.set_row(3, p1.y() * M.get_row(2) - M.get_row(1));
+
+  Matrix U(4, 4);
+  Matrix D(4, 4);
+  Matrix Vt(4, 4);
+  svd_decompose(A, U, D, Vt);
+  Vector P = Vt.get_column(3);
+  return Vector3D(P[0], P[1], P[2]);
 }
