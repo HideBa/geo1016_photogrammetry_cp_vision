@@ -37,16 +37,14 @@ std::vector<Vector2D> normalize_points(const std::vector<Vector2D> points,
 
 Matrix33 estimate_fundamental_matrix(const Matrix &W);
 
-std::pair<Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E);
+std::tuple<Matrix33, Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E);
+Vector3D reconstruct(const Matrix34 &M, const Matrix34 &M_prime,
+                     const Vector2D &p0, const Vector2D &p1);
+bool is_in_front_of_camera(const Vector3D &point, const Matrix33 &R,
+                           const Vector3D &t);
 
-Vector3D reconstruct(const Matrix34 &M, const Vector2D &p0, const Vector2D &p1);
-
-double check_fundamental_matrix(const Matrix33 &F,
-                                std::vector<Vector2D> points_0,
-                                std::vector<Vector2D> points_2);
-
-double check_normalisation(const Matrix33 &T, std::vector<Vector2D> points_0,
-                           std::vector<Vector2D> points_1);
+double check_matrix(const Matrix33 &Mat, std::vector<Vector2D> points_0,
+                    std::vector<Vector2D> points_1);
 /**
  * TODO: Finish this function for reconstructing 3D geometry from
  * corresponding image points.
@@ -72,11 +70,12 @@ bool Triangulation::triangulation(
 ) const {
   /// NOTE: there might be multiple workflows for reconstructing 3D geometry
   /// from corresponding image points.
-  ///       This assignment uses the commonly used one explained in our lecture.
-  ///       It is advised to define a function for the sub-tasks. This way you
-  ///       have a clean and well-structured implementation, which also makes
-  ///       testing and debugging easier. You can put your other functions above
-  ///       triangulation(), or put them in one or multiple separate files.
+  ///       This assignment uses the commonly used one explained in our
+  ///       lecture. It is advised to define a function for the sub-tasks.
+  ///       This way you have a clean and well-structured implementation,
+  ///       which also makes testing and debugging easier. You can put your
+  ///       other functions above triangulation(), or put them in one or
+  ///       multiple separate files.
 
   std::cout << "\nTODO: I am going to implement the triangulation() function "
                "in the following file:"
@@ -119,8 +118,8 @@ bool Triangulation::triangulation(
   //--------------------------------------------------------------------------------------------------------------
   // implementation starts ...
 
-  // TODO: check if the input is valid (always good because you never known how
-  // others will call your function).
+  // TODO: check if the input is valid (always good because you never known
+  // how others will call your function).
   if (fx < 0 || fy < 0) {
     std::cout << "invalid fx and fy" << std::endl;
     return false;
@@ -159,57 +158,89 @@ bool Triangulation::triangulation(
 
   Matrix33 Fq = estimate_fundamental_matrix(Wq);
 
-  auto fq_error =
-      check_fundamental_matrix(Fq, normalised_points_0, normalised_points_1);
+  //  Debugging--------
+  auto fq_error = check_matrix(Fq, normalised_points_0, normalised_points_1);
   std::cout << "fq error: " << fq_error << std::endl;
+  //  Debugging--------
+
   // Fundamental matrix
   Matrix33 F = transpose(T_prime) * Fq * T;
-  std::cout << "True F: " << F << std::endl;
+  F /= F.get(2, 2);
 
-  auto diff = check_fundamental_matrix(F, points_0, points_1);
-  std::cout << "diff: " << diff << std::endl;
+  //  Debugging--------
+  auto f_error = check_matrix(F, points_0, points_1);
+  std::cout << "f_error: " << f_error << std::endl;
+  //  Debugging--------
 
   // Essential matrix
   Matrix33 K(fx, s, cx, 0, fy, cy, 0, 0, 1);
   Matrix33 E = transpose(K) * F * K;
-  std::cout << "E: " << E.get(0, 0) << " " << E.get(0, 1) << " " << E.get(0, 2)
-            << " " << E.get(1, 0) << " " << E.get(1, 1) << " " << E.get(1, 2)
-            << " " << E.get(2, 0) << " " << E.get(2, 1) << " " << E.get(2, 2)
-            << std::endl;
 
-  auto [R1, t1] = recover_extrinsic(E);
+  auto e_error = check_matrix(E, points_0, points_1);
 
-  R = R1;
-  Matrix34 extrinsic(R.get(0, 0), R.get(0, 1), R.get(0, 2), t.x(), R.get(1, 0),
-                     R.get(1, 1), R.get(1, 2), t.y(), R.get(2, 0), R.get(2, 1),
-                     R.get(2, 2), t.z());
-  std::cout << "R: " << R.get(0, 0) << " " << R.get(0, 1) << " " << R.get(0, 2)
-            << " " << R.get(1, 0) << " " << R.get(1, 1) << " " << R.get(1, 2)
-            << " " << R.get(2, 0) << " " << R.get(2, 1) << " " << R.get(2, 2)
-            << std::endl;
-  std::cout << "t1: " << t1[0] << " " << t1[1] << " " << t1[2] << std::endl;
-  Matrix34 M = K * extrinsic;
+  Matrix33 R1;
+  Matrix33 R2;
+  Vector3D temp_t;
+  std::tie(R1, R2, temp_t) = recover_extrinsic(E);
+  std::vector<std::pair<Matrix33, Vector3D>> R_t_pairs(
+      {{R1, temp_t}, {R1, -temp_t}, {R2, temp_t}, {R2, -temp_t}});
+
+  std::vector<int> positive_z_count;
+  std::vector<std::vector<Vector3D>> reconstructed_points_list;
+  for (auto pair : R_t_pairs) {
+    auto R = pair.first;
+    auto t = pair.second;
+    Matrix34 extrinsic(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                       0.0);
+    Matrix34 extrinsic_prime(R.get(0, 0), R.get(0, 1), R.get(0, 2), t.x(),
+                             R.get(1, 0), R.get(1, 1), R.get(1, 2), t.y(),
+                             R.get(2, 0), R.get(2, 1), R.get(2, 2), t.z());
+    Matrix34 M = K * extrinsic;
+    Matrix34 M_prime = K * extrinsic_prime;
+    std::vector<Vector3D> reconstructed_points;
+    for (size_t i = 0; i < points_0.size(); i++) {
+      auto point_3d = reconstruct(M, M_prime, points_0[i], points_1[i]);
+      reconstructed_points.push_back(point_3d);
+    }
+
+    reconstructed_points_list.push_back(reconstructed_points);
+    // calculate the number of points in front of the camera
+    auto positive_z = 0;
+    for (auto p : reconstructed_points) {
+      if (is_in_front_of_camera(p, R, t) && p.z() > 0) {
+        positive_z++;
+      }
+    }
+    std::cout << "num of positive z " << positive_z << " t: " << t << std::endl;
+    positive_z_count.push_back(positive_z);
+  }
+
+  int best_pair_index = std::distance(
+      positive_z_count.begin(),
+      std::max_element(positive_z_count.begin(), positive_z_count.end()));
+  std::tie(R, t) = R_t_pairs[best_pair_index];
+  points_3d = reconstructed_points_list[best_pair_index];
+
+  std::cout << "best R: " << R << "\n";
+  std::cout << "best t: " << t << "\n";
 
   // TODO: Reconstruct 3D points. The main task is
-  //      - triangulate a pair of image points (i.e., compute the 3D coordinates
-  //      for each corresponding point pair)
-  for (size_t i = 0; i < normalised_points_0.size(); i++) {
-    auto point_3d = reconstruct(M, points_0[i], points_1[i]);
-    points_3d.push_back(point_3d);
-  }
+  //      - triangulate a pair of image points (i.e., compute the 3D
+  //      coordinates for each corresponding point pair)
+
   // TODO: Don't forget to
-  //          - write your recovered 3D points into 'points_3d' (so the viewer
-  //          can visualize the 3D points for you);
-  //          - write the recovered relative pose into R and t (the view will be
-  //          updated as seen from the 2nd camera,
+  //          - write your recovered 3D points into 'points_3d' (so the
+  //          viewer can visualize the 3D points for you);
+  //          - write the recovered relative pose into R and t (the view
+  //          will be updated as seen from the 2nd camera,
   //            which can help you check if R and t are correct).
   //       You must return either 'true' or 'false' to indicate whether the
   //       triangulation was successful (so the viewer will be notified to
-  //       visualize the 3D points and update the view). There are a few cases
-  //       you should return 'false' instead, for example:
+  //       visualize the 3D points and update the view). There are a few
+  //       cases you should return 'false' instead, for example:
   //          - function not implemented yet;
-  //          - input not valid (e.g., not enough points, point numbers don't
-  //          match);
+  //          - input not valid (e.g., not enough points, point numbers
+  //          don't match);
   //          - encountered failure in any step.
   return points_3d.size() > 0;
 }
@@ -258,92 +289,80 @@ normalisation_transformation_matrix(const std::vector<Vector2D> &points) {
 Matrix33 estimate_fundamental_matrix(const Matrix &W) { // W is Nx9 matrix
   Matrix U(W.rows(), W.rows(), 0.0);
   Matrix D(W.rows(), 9, 0.0);
-  Matrix Vt(9, 9, 0.0);
-  svd_decompose(W, U, D, Vt);
-  Vector vec_F_hat(Vt.get_column(8));
+  Matrix V(9, 9, 0.0);
+  svd_decompose(W, U, D, V);
+  Vector vec_F_hat(V.get_column(8));
   Matrix F_hat(3, 3, vec_F_hat.data());
 
-  U = Matrix(3, 3, 0.0);
-  D = Matrix(3, 3, 0.0);
-  Vt = Matrix(3, 3, 0.0);
-  svd_decompose(F_hat, U, D, Vt);
+  U = Matrix33(0.0);
+  D = Matrix33(0.0);
+  V = Matrix33(0.0);
+  svd_decompose(F_hat, U, D, V);
   D.set(2, 2, 0.0); // This is for the best rank-2 approximation
-  std::cout << "D: " << D << std::endl;
   Matrix33 F(0.0);
-  F = U * D * Vt;
-  std::cout << "F hat: " << F_hat << std::endl;
-  std::cout << "F : " << F << std::endl;
+  F = U * D * transpose(V);
+
   return F;
 }
 
-std::pair<Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E) {
+std::tuple<Matrix33, Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E) {
   Matrix33 U(0.0);
   Matrix33 D(0.0);
-  Matrix33 Vt(0.0);
-  svd_decompose(E, U, D, Vt);
+  Matrix33 V(0.0);
+  svd_decompose(E, U, D, V);
   Matrix33 W(0, -1, 0, 1, 0, 0, 0, 0, 1);
   Matrix33 Z(0, 1, 0, -1, 0, 0, 0, 0, 0);
-  Matrix33 R1 = U * W * transpose(Vt);
-  Matrix33 R2 = U * transpose(W) * transpose(Vt);
-  std::cout << "R1: " << R1.get(0, 0) << " " << R1.get(0, 1) << " "
-            << R1.get(0, 2) << " " << R1.get(1, 0) << " " << R1.get(1, 1) << " "
-            << R1.get(1, 2) << " " << R1.get(2, 0) << " " << R1.get(2, 1) << " "
-            << R1.get(2, 2) << std::endl;
-  std::cout << "R2: " << R2.get(0, 0) << " " << R2.get(0, 1) << " "
-            << R2.get(0, 2) << " " << R2.get(1, 0) << " " << R2.get(1, 1) << " "
-            << R2.get(1, 2) << " " << R2.get(2, 0) << " " << R2.get(2, 1) << " "
-            << R2.get(2, 2) << std::endl;
-  auto det = determinant(R1);
-  auto det2 = determinant(R2);
+  Matrix33 R1 = U * W * transpose(V);
+  Matrix33 R2 = U * transpose(W) * transpose(V);
 
-  Matrix33 R;
-  if (determinant(R1) > 0) { // TODO: consider sign of determinant
-    R = R1;
-  } else if (determinant(R2) > 0) {
-    R = R2;
-  } else {
-    R = R1; // TODO: check later
+  if (determinant(R1) < 0) {
+    R1 = -R1;
+  }
+  if (determinant(R2) < 0) {
+    R2 = -R2;
   }
 
-  auto tx = U.get_column(2); // TODO: consider sign of t (+-)
-
-  return std::pair<Matrix33, Vector3D>(R, tx);
+  auto t = U.get_column(2);
+  return std::tuple<Matrix33, Matrix33, Vector3D>(R1, R2, t);
 }
 
-Vector3D reconstruct(const Matrix34 &M, const Vector2D &p0,
-                     const Vector2D &p1) {
+Vector3D reconstruct(const Matrix34 &M, const Matrix34 &M_prime,
+                     const Vector2D &p0, const Vector2D &p1) {
 
   Matrix44 A;
   A.set_row(0, p0.x() * M.get_row(2) - M.get_row(0));
   A.set_row(1, p0.y() * M.get_row(2) - M.get_row(1));
-  A.set_row(2, p1.x() * M.get_row(2) - M.get_row(0));
-  A.set_row(3, p1.y() * M.get_row(2) - M.get_row(1));
+  A.set_row(2, p1.x() * M_prime.get_row(2) - M_prime.get_row(0));
+  A.set_row(3, p1.y() * M_prime.get_row(2) - M_prime.get_row(1));
 
   Matrix U(4, 4);
   Matrix D(4, 4);
-  Matrix Vt(4, 4);
-  svd_decompose(A, U, D, Vt);
-  Vector4D h_P = Vector4D(Vt.get_column(3));
+  Matrix V(4, 4);
+  svd_decompose(A, U, D, V);
+  Vector4D h_P = Vector4D(V.get_column(3));
   Vector3D P = h_P.cartesian();
   return P;
 }
 
-double check_fundamental_matrix(const Matrix33 &F,
-                                std::vector<Vector2D> points_0,
-                                std::vector<Vector2D> points_1) {
+bool is_in_front_of_camera(const Vector3D &point, const Matrix33 &R,
+                           const Vector3D &t) {
+  Vector3D point_camera = R * point + t;
+  return point_camera.z() > 0;
+}
+
+double check_matrix(const Matrix33 &Mat, std::vector<Vector2D> points_0,
+                    std::vector<Vector2D> points_1) {
   auto sum_error = 0.0;
-  // Debuginng--------------------------
   for (size_t i = 0; i < points_0.size(); i++) {
     auto point0 = points_0[i];
     auto point1 = points_1[i];
-    auto hp = point0.homogeneous();
-    auto reprojected = Vector3D(F * hp);
-    auto point0_reprojected = reprojected.cartesian();
-    auto diff_x = point0_reprojected.x() - point1.x();
-    auto diff_y = point0_reprojected.y() - point1.y();
-    auto diff = sqrt(diff_x * diff_x + diff_y * diff_y);
-    sum_error += diff;
+    auto point0_h = point0.homogeneous();
+    auto point1_h = point1.homogeneous();
+    Matrix point0_h_m(3, 1, {point0_h.x(), point0_h.y(), point0_h.z()});
+    Matrix point1_h_m(3, 1, {point1_h.x(), point1_h.y(), point1_h.z()});
+    auto error = norm((transpose(point1_h_m) * Mat * point0_h_m));
+    sum_error += error;
   }
-  auto mean_error = sum_error / points_0.size();
-  return mean_error;
+  auto ave_error = sum_error / points_0.size();
+  return ave_error;
 }
