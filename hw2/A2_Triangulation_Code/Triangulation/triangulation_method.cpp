@@ -26,8 +26,6 @@
 #include "triangulation.h"
 #include <easy3d/optimizer/optimizer_lm.h>
 
-// #include <cassert>
-
 using namespace easy3d;
 
 Matrix33
@@ -40,11 +38,16 @@ Matrix33 estimate_fundamental_matrix(const Matrix &W);
 std::tuple<Matrix33, Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E);
 Vector3D reconstruct(const Matrix34 &M, const Matrix34 &M_prime,
                      const Vector2D &p0, const Vector2D &p1);
+Vector3D reconstruct_nonlinear(const Matrix34 &M, const Matrix34 &M_prime,
+                               const Vector2D &p0, const Vector2D &p1);
 bool is_in_front_of_camera(const Vector3D &point, const Matrix33 &R,
                            const Vector3D &t);
 
 double check_matrix(const Matrix33 &Mat, std::vector<Vector2D> points_0,
                     std::vector<Vector2D> points_1);
+
+double evaluate_3dcood(const Matrix34 &M, std::vector<Vector2D> original_points,
+                       std::vector<Vector3D> reconstructed_points);
 /**
  * TODO: Finish this function for reconstructing 3D geometry from
  * corresponding image points.
@@ -187,6 +190,7 @@ bool Triangulation::triangulation(
 
   std::vector<int> positive_z_count;
   std::vector<std::vector<Vector3D>> reconstructed_points_list;
+  std::vector<std::pair<Matrix34, Matrix34>> M_pairs;
   for (auto pair : R_t_pairs) {
     auto R = pair.first;
     auto t = pair.second;
@@ -197,9 +201,12 @@ bool Triangulation::triangulation(
                              R.get(2, 0), R.get(2, 1), R.get(2, 2), t.z());
     Matrix34 M = K * extrinsic;
     Matrix34 M_prime = K * extrinsic_prime;
+    M_pairs.push_back(std::pair<Matrix34, Matrix34>(M, M_prime));
     std::vector<Vector3D> reconstructed_points;
     for (size_t i = 0; i < points_0.size(); i++) {
-      auto point_3d = reconstruct(M, M_prime, points_0[i], points_1[i]);
+      //      auto point_3d = reconstruct(M, M_prime, points_0[i], points_1[i]);
+      auto point_3d =
+          reconstruct_nonlinear(M, M_prime, points_0[i], points_1[i]);
       reconstructed_points.push_back(point_3d);
     }
 
@@ -221,8 +228,15 @@ bool Triangulation::triangulation(
   std::tie(R, t) = R_t_pairs[best_pair_index];
   points_3d = reconstructed_points_list[best_pair_index];
 
+  auto best_M_pair = M_pairs[best_pair_index];
+
+  auto mean_error1 = evaluate_3dcood(best_M_pair.first, points_0, points_3d);
+  auto mean_error2 = evaluate_3dcood(best_M_pair.second, points_1, points_3d);
+
   std::cout << "best R: " << R << "\n";
   std::cout << "best t: " << t << "\n";
+  std::cout << "error of first image: " << mean_error1 << "\n";
+  std::cout << "error of second image: " << mean_error2 << "\n";
 
   // TODO: Reconstruct 3D points. The main task is
   //      - triangulate a pair of image points (i.e., compute the 3D
@@ -365,4 +379,64 @@ double check_matrix(const Matrix33 &Mat, std::vector<Vector2D> points_0,
   }
   auto ave_error = sum_error / points_0.size();
   return ave_error;
+}
+
+double evaluate_3dcood(const Matrix34 &M, std::vector<Vector2D> original_points,
+                       std::vector<Vector3D> reconstructed_points) {
+  double sum_error = 0;
+  for (size_t i = 0; i < reconstructed_points.size(); i++) {
+    auto p = reconstructed_points[i];
+    Vector3D reprojected_h = M * p.homogeneous();
+    auto reprojected = reprojected_h.cartesian();
+    auto diff = (original_points[i] - reprojected).length2();
+    sum_error += diff;
+  }
+  double ave_error = sum_error / reconstructed_points.size();
+  return ave_error;
+}
+
+class Objective : public Objective_LM {
+public:
+  Objective(int num_func, int num_var, const Matrix34 &M,
+            const Matrix34 &M_prime, const Vector2D &point_0,
+            const Vector2D &point_1)
+      : Objective_LM(num_func, num_var), M(M), M_prime(M_prime),
+        point_0(point_0), point_1(point_1) {}
+
+protected:
+  const Matrix34 &M;
+  const Matrix34 &M_prime;
+  const Vector2D &point_0;
+  const Vector2D &point_1;
+
+  int evaluate(const double *x, double *fvec) {
+    Vector3D estimated_point(x[0], x[1], x[2]);
+    Vector3D reprojected0_h = this->M * estimated_point.homogeneous();
+    Vector2D reprojected0 = reprojected0_h.cartesian();
+    Vector3D reprojected1_h = this->M_prime * estimated_point.homogeneous();
+    Vector2D reprojected1 = reprojected1_h.cartesian();
+    auto diff_x_1 = reprojected0.x() - point_0.x();
+    auto diff_x_2 = reprojected1.x() - point_1.x();
+    auto diff_y_1 = reprojected0.y() - point_0.y();
+    auto diff_y_2 = reprojected1.y() - point_1.y();
+
+    fvec[0] = diff_x_1 * diff_x_1 + diff_x_2 * diff_x_2;
+    fvec[1] = diff_y_1 * diff_y_1 + diff_y_2 * diff_y_2;
+
+    return 0;
+  }
+};
+
+Vector3D reconstruct_nonlinear(const Matrix34 &M, const Matrix34 &M_prime,
+                               const Vector2D &p0, const Vector2D &p1) {
+  Objective obj(3, 3, M, M_prime, p0, p1);
+  Optimizer_LM lm;
+  std::vector<double> x = {4.0, -4.0, 4.0};
+  bool status = lm.optimize(&obj, x);
+  std::cout << "status: " << status << std::endl;
+  /// retrieve the result.
+  std::cout << "the solution is:     " << x[0] << ", " << x[1] << ", " << x[2]
+            << std::endl;
+
+  return Vector3D(x[0], x[1], x[2]);
 }
