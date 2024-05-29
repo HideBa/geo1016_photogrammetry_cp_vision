@@ -144,8 +144,6 @@ bool Triangulation::triangulation(
   auto T = normalisation_transformation_matrix(points_0);
   auto T_prime = normalisation_transformation_matrix(points_1);
   auto normalised_points_0 = normalize_points(points_0, T);
-  std::cout << "normalised point 1: " << normalised_points_0[0].x() << " "
-            << normalised_points_0[0].y() << std::endl;
 
   auto normalised_points_1 = normalize_points(points_1, T_prime);
 
@@ -153,10 +151,10 @@ bool Triangulation::triangulation(
   for (size_t i = 0; i < normalised_points_0.size(); i++) {
     auto p = normalised_points_0[i];
     auto p_prime = normalised_points_1[i];
-    auto u1 = p.x(), v1 = p.y();
-    auto u1_prime = p_prime.x(), v1_prime = p_prime.y();
-    Wq.set_row(i, {u1 * u1_prime, v1 * u1_prime, u1_prime, u1 * v1_prime,
-                   v1 * v1_prime, v1_prime, u1, v1, 1});
+    auto u = p.x(), v = p.y();
+    auto u_prime = p_prime.x(), v_prime = p_prime.y();
+    Wq.set_row(i, {u * u_prime, v * u_prime, u_prime, u * v_prime, v * v_prime,
+                   v_prime, u, v, 1});
   }
 
   Matrix33 Fq = estimate_fundamental_matrix(Wq);
@@ -166,10 +164,7 @@ bool Triangulation::triangulation(
   std::cout << "fq error: " << fq_error << std::endl;
   // Fundamental matrix
   Matrix33 F = transpose(T_prime) * Fq * T;
-  std::cout << "F: " << F.get(0, 0) << " " << F.get(0, 1) << " " << F.get(0, 2)
-            << " " << F.get(1, 0) << " " << F.get(1, 1) << " " << F.get(1, 2)
-            << " " << F.get(2, 0) << " " << F.get(2, 1) << " " << F.get(2, 2)
-            << std::endl;
+  std::cout << "True F: " << F << std::endl;
 
   auto diff = check_fundamental_matrix(F, points_0, points_1);
   std::cout << "diff: " << diff << std::endl;
@@ -257,7 +252,6 @@ normalisation_transformation_matrix(const std::vector<Vector2D> &points) {
   T.set(0, 2, -scale * centroid.x());
   T.set(1, 2, -scale * centroid.y());
   T.set(2, 2, 1);
-  std::cout << "matrix T: " << T << std::endl;
   return T;
 };
 
@@ -274,9 +268,11 @@ Matrix33 estimate_fundamental_matrix(const Matrix &W) { // W is Nx9 matrix
   Vt = Matrix(3, 3, 0.0);
   svd_decompose(F_hat, U, D, Vt);
   D.set(2, 2, 0.0); // This is for the best rank-2 approximation
-
-  Matrix F(3, 3);
+  std::cout << "D: " << D << std::endl;
+  Matrix33 F(0.0);
   F = U * D * Vt;
+  std::cout << "F hat: " << F_hat << std::endl;
+  std::cout << "F : " << F << std::endl;
   return F;
 }
 
