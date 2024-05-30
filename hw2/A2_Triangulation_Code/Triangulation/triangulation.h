@@ -27,55 +27,55 @@
 
 #include <easy3d/viewer/viewer.h>
 
-#include "./vector.h"
 #include "./matrix.h"
+#include "./vector.h"
 
 namespace easy3d {
-    class Texture;
-    class TrianglesDrawable;
-    class LinesDrawable;
-}
+class Texture;
+class TrianglesDrawable;
+class LinesDrawable;
+} // namespace easy3d
 
 class Triangulation : public easy3d::Viewer {
 public:
-    Triangulation(
-            const std::string &title,
-            const std::string &image_point_file_0,
-            const std::string &image_point_file_1
-    );
+  Triangulation(const std::string &title, const std::string &image_point_file_0,
+                const std::string &image_point_file_1);
 
 protected:
-    std::string usage() const override;
+  std::string usage() const override;
 
-    bool key_press_event(int key, int modifiers) override;
+  bool key_press_event(int key, int modifiers) override;
 
-    bool triangulation(
-            double fx, double fy,     /// input: the focal lengths (same for both cameras)
-            double cx, double cy,     /// input: the principal point (same for both cameras)
-            double s,                 /// input: the skew factor (same for both cameras)
-            const std::vector<easy3d::Vector2D> &image_0_points,    /// input: 2D image points in 1st image.
-            const std::vector<easy3d::Vector2D> &image_1_points,    /// input: 2D image points in 2nd image.
-            std::vector<easy3d::Vector3D> &points_3d,               /// output: reconstructed 3D points
-            easy3d::Matrix33 &R,   /// output: recovered rotation of 2nd camera
-            easy3d::Vector3D &t    /// output: recovered translation of 2nd camera
-    ) const;
+  std::pair<bool, double> triangulation(
+      double fx, double fy, /// input: the focal lengths (same for both cameras)
+      double cx,
+      double cy, /// input: the principal point (same for both cameras)
+      double s,  /// input: the skew factor (same for both cameras)
+      const std::vector<easy3d::Vector2D>
+          &image_0_points, /// input: 2D image points in 1st image.
+      const std::vector<easy3d::Vector2D>
+          &image_1_points, /// input: 2D image points in 2nd image.
+      std::vector<easy3d::Vector3D>
+          &points_3d,      /// output: reconstructed 3D points
+      easy3d::Matrix33 &R, /// output: recovered rotation of 2nd camera
+      easy3d::Vector3D &t  /// output: recovered translation of 2nd camera
+  ) const;
 
-    void post_draw() override;
-    void cleanup() override;
-    void update_model(const std::vector<easy3d::Vector3D> &points);
-    void update_image_plane(const easy3d::mat3 &R, const easy3d::vec3 &t);
+  void post_draw() override;
+  void cleanup() override;
+  void update_model(const std::vector<easy3d::Vector3D> &points);
+  void update_image_plane(const easy3d::mat3 &R, const easy3d::vec3 &t);
 
 private:
-    std::vector<easy3d::Vector2D> image_0_points_;
-    std::vector<easy3d::Vector2D> image_1_points_;
-    easy3d::Texture *texture_0_;
-    easy3d::Texture *texture_1_;
+  std::vector<easy3d::Vector2D> image_0_points_;
+  std::vector<easy3d::Vector2D> image_1_points_;
+  easy3d::Texture *texture_0_;
+  easy3d::Texture *texture_1_;
 
-    easy3d::TrianglesDrawable *image_plane_;
-    easy3d::LinesDrawable *view_frustum_;
+  easy3d::TrianglesDrawable *image_plane_;
+  easy3d::LinesDrawable *view_frustum_;
 
-    bool show_images_;
+  bool show_images_;
 };
-
 
 #endif // TRIANGULATION_H

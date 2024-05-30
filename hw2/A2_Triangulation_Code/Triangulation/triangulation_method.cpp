@@ -55,7 +55,7 @@ double evaluate_3dcood(const Matrix34 &M, std::vector<Vector2D> original_points,
  * 3D points must be written to 'points_3d' and the recovered relative pose
  * must be written to R and t.
  */
-bool Triangulation::triangulation(
+std::pair<bool, double> Triangulation::triangulation(
     double fx,
     double fy, /// input: the focal lengths (same for both cameras)
     double cx,
@@ -80,38 +80,39 @@ bool Triangulation::triangulation(
   ///       other functions above triangulation(), or put them in one or
   ///       multiple separate files.
 
-  std::cout << "\nTODO: I am going to implement the triangulation() function "
-               "in the following file:"
-            << std::endl
-            << "\t    - triangulation_method.cpp\n\n";
-
-  std::cout << "[Liangliang]:\n"
-               "\tFeel free to use any provided data structures and functions. "
-               "For your convenience, the\n"
-               "\tfollowing three files implement basic linear algebra data "
-               "structures and operations:\n"
-               "\t    - Triangulation/matrix.h  Matrices of arbitrary "
-               "dimensions and related functions.\n"
-               "\t    - Triangulation/vector.h  Vectors of arbitrary "
-               "dimensions and related functions.\n"
-               "\t    - Triangulation/matrix_algo.h  Determinant, inverse, "
-               "SVD, linear least-squares...\n"
-               "\tPlease refer to the above files for a complete list of "
-               "useful functions and their usage.\n\n"
-               "\tIf you choose to implement the non-linear method for "
-               "triangulation (optional task). Please\n"
-               "\trefer to 'Tutorial_NonlinearLeastSquares/main.cpp' for an "
-               "example and some explanations.\n\n"
-               "\tIn your final submission, please\n"
-               "\t    - delete ALL unrelated test or debug code and avoid "
-               "unnecessary output.\n"
-               "\t    - include all the source code (and please do NOT modify "
-               "the structure of the directories).\n"
-               "\t    - do NOT include the 'build' directory (which contains "
-               "the intermediate files in a build step).\n"
-               "\t    - make sure your code compiles and can reproduce your "
-               "results without ANY modification.\n\n"
-            << std::flush;
+  //  std::cout << "\nTODO: I am going to implement the triangulation() function
+  //  "
+  //               "in the following file:"
+  //            << std::endl
+  //            << "\t    - triangulation_method.cpp\n\n";
+  //
+  //  std::cout << "[Liangliang]:\n"
+  //               "\tFeel free to use any provided data structures and
+  //               functions. " "For your convenience, the\n"
+  //               "\tfollowing three files implement basic linear algebra data
+  //               " "structures and operations:\n"
+  //               "\t    - Triangulation/matrix.h  Matrices of arbitrary "
+  //               "dimensions and related functions.\n"
+  //               "\t    - Triangulation/vector.h  Vectors of arbitrary "
+  //               "dimensions and related functions.\n"
+  //               "\t    - Triangulation/matrix_algo.h  Determinant, inverse, "
+  //               "SVD, linear least-squares...\n"
+  //               "\tPlease refer to the above files for a complete list of "
+  //               "useful functions and their usage.\n\n"
+  //               "\tIf you choose to implement the non-linear method for "
+  //               "triangulation (optional task). Please\n"
+  //               "\trefer to 'Tutorial_NonlinearLeastSquares/main.cpp' for an
+  //               " "example and some explanations.\n\n"
+  //               "\tIn your final submission, please\n"
+  //               "\t    - delete ALL unrelated test or debug code and avoid "
+  //               "unnecessary output.\n"
+  //               "\t    - include all the source code (and please do NOT
+  //               modify " "the structure of the directories).\n"
+  //               "\t    - do NOT include the 'build' directory (which contains
+  //               " "the intermediate files in a build step).\n"
+  //               "\t    - make sure your code compiles and can reproduce your
+  //               " "results without ANY modification.\n\n"
+  //            << std::flush;
 
   /// For more functions of Matrix and Vector, please refer to 'matrix.h' and
   /// 'vector.h'
@@ -125,7 +126,7 @@ bool Triangulation::triangulation(
   // how others will call your function).
   if (fx < 0 || fy < 0) {
     std::cout << "invalid fx and fy" << std::endl;
-    return false;
+    return std::pair<bool, double>(false, 10000);
   }
   for (auto p : points_0) {
     assert(p.x() >= 0);
@@ -161,19 +162,9 @@ bool Triangulation::triangulation(
 
   Matrix33 Fq = estimate_fundamental_matrix(Wq);
 
-  //  Debugging--------
-  auto fq_error = check_matrix(Fq, normalised_points_0, normalised_points_1);
-  std::cout << "fq error: " << fq_error << std::endl;
-  //  Debugging--------
-
   // Fundamental matrix
   Matrix33 F = transpose(T_prime) * Fq * T;
   F /= F.get(2, 2);
-
-  //  Debugging--------
-  auto f_error = check_matrix(F, points_0, points_1);
-  std::cout << "f_error: " << f_error << std::endl;
-  //  Debugging--------
 
   // Essential matrix
   Matrix33 K(fx, s, cx, 0, fy, cy, 0, 0, 1);
@@ -204,9 +195,9 @@ bool Triangulation::triangulation(
     M_pairs.push_back(std::pair<Matrix34, Matrix34>(M, M_prime));
     std::vector<Vector3D> reconstructed_points;
     for (size_t i = 0; i < points_0.size(); i++) {
-      //      auto point_3d = reconstruct(M, M_prime, points_0[i], points_1[i]);
-      auto point_3d =
-          reconstruct_nonlinear(M, M_prime, points_0[i], points_1[i]);
+      auto point_3d = reconstruct(M, M_prime, points_0[i], points_1[i]);
+      //      auto point_3d =
+      //          reconstruct_nonlinear(M, M_prime, points_0[i], points_1[i]);
       reconstructed_points.push_back(point_3d);
     }
 
@@ -218,7 +209,6 @@ bool Triangulation::triangulation(
         positive_z++;
       }
     }
-    std::cout << "num of positive z " << positive_z << " t: " << t << std::endl;
     positive_z_count.push_back(positive_z);
   }
 
@@ -232,9 +222,8 @@ bool Triangulation::triangulation(
 
   auto mean_error1 = evaluate_3dcood(best_M_pair.first, points_0, points_3d);
   auto mean_error2 = evaluate_3dcood(best_M_pair.second, points_1, points_3d);
+  auto mean_error = (mean_error1 + mean_error2) / 2;
 
-  std::cout << "best R: " << R << "\n";
-  std::cout << "best t: " << t << "\n";
   std::cout << "error of first image: " << mean_error1 << "\n";
   std::cout << "error of second image: " << mean_error2 << "\n";
 
@@ -256,7 +245,7 @@ bool Triangulation::triangulation(
   //          - input not valid (e.g., not enough points, point numbers
   //          don't match);
   //          - encountered failure in any step.
-  return points_3d.size() > 0;
+  return std::pair<bool, double>(points_3d.size() > 0, mean_error);
 }
 
 std::vector<Vector2D> normalize_points(const std::vector<Vector2D> points,
@@ -388,7 +377,7 @@ double evaluate_3dcood(const Matrix34 &M, std::vector<Vector2D> original_points,
     auto p = reconstructed_points[i];
     Vector3D reprojected_h = M * p.homogeneous();
     auto reprojected = reprojected_h.cartesian();
-    auto diff = (original_points[i] - reprojected).length2();
+    auto diff = norm(original_points[i] - reprojected);
     sum_error += diff;
   }
   double ave_error = sum_error / reconstructed_points.size();
@@ -420,9 +409,8 @@ protected:
     auto diff_y_1 = reprojected0.y() - point_0.y();
     auto diff_y_2 = reprojected1.y() - point_1.y();
 
-    fvec[0] = diff_x_1 * diff_x_1 + diff_x_2 * diff_x_2;
-    fvec[1] = diff_y_1 * diff_y_1 + diff_y_2 * diff_y_2;
-
+    fvec[0] = diff_x_1 * diff_x_1 + diff_y_1 * diff_y_1;
+    fvec[1] = diff_x_2 * diff_x_2 + diff_y_2 * diff_y_2;
     return 0;
   }
 };
