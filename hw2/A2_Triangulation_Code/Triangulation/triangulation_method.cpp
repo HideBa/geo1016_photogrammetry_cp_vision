@@ -39,7 +39,8 @@ std::tuple<Matrix33, Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E);
 Vector3D reconstruct(const Matrix34 &M, const Matrix34 &M_prime,
                      const Vector2D &p0, const Vector2D &p1);
 Vector3D reconstruct_nonlinear(const Matrix34 &M, const Matrix34 &M_prime,
-                               const Vector2D &p0, const Vector2D &p1);
+                               const Vector2D &p0, const Vector2D &p1,
+                               const Vector3D init_guess);
 bool is_in_front_of_camera(const Vector3D &point, const Matrix33 &R,
                            const Vector3D &t);
 
@@ -80,46 +81,8 @@ bool Triangulation::triangulation(
   ///       other functions above triangulation(), or put them in one or
   ///       multiple separate files.
 
-  std::cout << "\nTODO: I am going to implement the triangulation() function "
-               "in the following file:"
-            << std::endl
-            << "\t    - triangulation_method.cpp\n\n";
-
-  std::cout << "[Liangliang]:\n"
-               "\tFeel free to use any provided data structures and functions. "
-               "For your convenience, the\n"
-               "\tfollowing three files implement basic linear algebra data "
-               "structures and operations:\n"
-               "\t    - Triangulation/matrix.h  Matrices of arbitrary "
-               "dimensions and related functions.\n"
-               "\t    - Triangulation/vector.h  Vectors of arbitrary "
-               "dimensions and related functions.\n"
-               "\t    - Triangulation/matrix_algo.h  Determinant, inverse, "
-               "SVD, linear least-squares...\n"
-               "\tPlease refer to the above files for a complete list of "
-               "useful functions and their usage.\n\n"
-               "\tIf you choose to implement the non-linear method for "
-               "triangulation (optional task). Please\n"
-               "\trefer to 'Tutorial_NonlinearLeastSquares/main.cpp' for an "
-               "example and some explanations.\n\n"
-               "\tIn your final submission, please\n"
-               "\t    - delete ALL unrelated test or debug code and avoid "
-               "unnecessary output.\n"
-               "\t    - include all the source code (and please do NOT modify "
-               "the structure of the directories).\n"
-               "\t    - do NOT include the 'build' directory (which contains "
-               "the intermediate files in a build step).\n"
-               "\t    - make sure your code compiles and can reproduce your "
-               "results without ANY modification.\n\n"
-            << std::flush;
-
   /// For more functions of Matrix and Vector, please refer to 'matrix.h' and
   /// 'vector.h'
-
-  // TODO: delete all above example code in your final submission
-
-  //--------------------------------------------------------------------------------------------------------------
-  // implementation starts ...
 
   // TODO: check if the input is valid (always good because you never known
   // how others will call your function).
@@ -136,11 +99,6 @@ bool Triangulation::triangulation(
     assert(p.y() >= 0);
   }
   assert(points_0.size() == points_1.size() && points_0.size() >= 8);
-
-  // TODO: Estimate relative pose of two views. This can be subdivided into
-  //      - estimate the fundamental matrix F;
-  //      - compute the essential matrix E;
-  //      - recover rotation R and t.
 
   // Normalise points
   auto T = normalisation_transformation_matrix(points_0);
@@ -159,27 +117,14 @@ bool Triangulation::triangulation(
                    v_prime, u, v, 1});
   }
 
-  Matrix33 Fq = estimate_fundamental_matrix(Wq);
-
-  //  Debugging--------
-  auto fq_error = check_matrix(Fq, normalised_points_0, normalised_points_1);
-  std::cout << "fq error: " << fq_error << std::endl;
-  //  Debugging--------
-
   // Fundamental matrix
+  Matrix33 Fq = estimate_fundamental_matrix(Wq);
   Matrix33 F = transpose(T_prime) * Fq * T;
   F /= F.get(2, 2);
-
-  //  Debugging--------
-  auto f_error = check_matrix(F, points_0, points_1);
-  std::cout << "f_error: " << f_error << std::endl;
-  //  Debugging--------
 
   // Essential matrix
   Matrix33 K(fx, s, cx, 0, fy, cy, 0, 0, 1);
   Matrix33 E = transpose(K) * F * K;
-
-  auto e_error = check_matrix(E, points_0, points_1);
 
   Matrix33 R1;
   Matrix33 R2;
@@ -188,6 +133,8 @@ bool Triangulation::triangulation(
   std::vector<std::pair<Matrix33, Vector3D>> R_t_pairs(
       {{R1, temp_t}, {R1, -temp_t}, {R2, temp_t}, {R2, -temp_t}});
 
+  // Find the best pair of R and t which reconstruct most of points in front of
+  // both camera
   std::vector<int> positive_z_count;
   std::vector<std::vector<Vector3D>> reconstructed_points_list;
   std::vector<std::pair<Matrix34, Matrix34>> M_pairs;
@@ -203,10 +150,9 @@ bool Triangulation::triangulation(
     Matrix34 M_prime = K * extrinsic_prime;
     M_pairs.push_back(std::pair<Matrix34, Matrix34>(M, M_prime));
     std::vector<Vector3D> reconstructed_points;
+    // Reconstruct with linear method for initial guess
     for (size_t i = 0; i < points_0.size(); i++) {
-      //      auto point_3d = reconstruct(M, M_prime, points_0[i], points_1[i]);
-      auto point_3d =
-          reconstruct_nonlinear(M, M_prime, points_0[i], points_1[i]);
+      auto point_3d = reconstruct(M, M_prime, points_0[i], points_1[i]);
       reconstructed_points.push_back(point_3d);
     }
 
@@ -218,44 +164,57 @@ bool Triangulation::triangulation(
         positive_z++;
       }
     }
-    std::cout << "num of positive z " << positive_z << " t: " << t << std::endl;
     positive_z_count.push_back(positive_z);
   }
 
+  std::vector<Vector3D> initial_guess_3d_points;
   int best_pair_index = std::distance(
       positive_z_count.begin(),
       std::max_element(positive_z_count.begin(), positive_z_count.end()));
   std::tie(R, t) = R_t_pairs[best_pair_index];
-  points_3d = reconstructed_points_list[best_pair_index];
+
+  // Reconstructed points from the best R and t pair
+  initial_guess_3d_points = reconstructed_points_list[best_pair_index];
 
   auto best_M_pair = M_pairs[best_pair_index];
 
-  auto mean_error1 = evaluate_3dcood(best_M_pair.first, points_0, points_3d);
-  auto mean_error2 = evaluate_3dcood(best_M_pair.second, points_1, points_3d);
+  auto mean_error_linear1 =
+      evaluate_3dcood(best_M_pair.first, points_0, initial_guess_3d_points);
+  auto mean_error_linear2 =
+      evaluate_3dcood(best_M_pair.second, points_1, initial_guess_3d_points);
+  auto mean_error_linear = (mean_error_linear1 + mean_error_linear2) / 2;
 
+  // Reconstruct with nonlinear method
+  for (size_t i = 0; i < points_0.size(); i++) {
+    auto initial_guess = initial_guess_3d_points[i];
+    auto point_3d =
+        reconstruct_nonlinear(best_M_pair.first, best_M_pair.second,
+                              points_0[i], points_1[i], initial_guess);
+    points_3d.push_back(point_3d);
+  }
+
+  auto mean_error_nonlinear1 =
+      evaluate_3dcood(best_M_pair.first, points_0, points_3d);
+  auto mean_error_nonlinear2 =
+      evaluate_3dcood(best_M_pair.second, points_1, points_3d);
+  auto mean_error_nonlinear =
+      (mean_error_nonlinear1 + mean_error_nonlinear2) / 2;
+
+  std::cout << "================" << "\n";
   std::cout << "best R: " << R << "\n";
   std::cout << "best t: " << t << "\n";
-  std::cout << "error of first image: " << mean_error1 << "\n";
-  std::cout << "error of second image: " << mean_error2 << "\n";
+  std::cout << "================" << "\n";
 
-  // TODO: Reconstruct 3D points. The main task is
-  //      - triangulate a pair of image points (i.e., compute the 3D
-  //      coordinates for each corresponding point pair)
+  std::cout << "================" << "\n";
+  std::cout << "error with linear method: " << mean_error_linear << "\n";
+  std::cout << "error of first image: " << mean_error_linear1 << "\n";
+  std::cout << "error of second image: " << mean_error_linear2 << "\n";
+  std::cout << "================" << "\n";
+  std::cout << "error with non-linear method: " << mean_error_nonlinear << "\n";
+  std::cout << "error of first image: " << mean_error_nonlinear1 << "\n";
+  std::cout << "error of second image: " << mean_error_nonlinear2 << "\n";
+  std::cout << "================" << "\n";
 
-  // TODO: Don't forget to
-  //          - write your recovered 3D points into 'points_3d' (so the
-  //          viewer can visualize the 3D points for you);
-  //          - write the recovered relative pose into R and t (the view
-  //          will be updated as seen from the 2nd camera,
-  //            which can help you check if R and t are correct).
-  //       You must return either 'true' or 'false' to indicate whether the
-  //       triangulation was successful (so the viewer will be notified to
-  //       visualize the 3D points and update the view). There are a few
-  //       cases you should return 'false' instead, for example:
-  //          - function not implemented yet;
-  //          - input not valid (e.g., not enough points, point numbers
-  //          don't match);
-  //          - encountered failure in any step.
   return points_3d.size() > 0;
 }
 
@@ -329,6 +288,7 @@ std::tuple<Matrix33, Matrix33, Vector3D> recover_extrinsic(const Matrix33 &E) {
   Matrix33 R1 = U * W * transpose(V);
   Matrix33 R2 = U * transpose(W) * transpose(V);
 
+  // Make sure determinant of R becomes positive
   if (determinant(R1) < 0) {
     R1 = -R1;
   }
@@ -380,6 +340,7 @@ double check_matrix(const Matrix33 &Mat, std::vector<Vector2D> points_0,
   auto ave_error = sum_error / points_0.size();
   return ave_error;
 }
+
 double evaluate_3dcood(const Matrix34 &M, std::vector<Vector2D> original_points,
                        std::vector<Vector3D> reconstructed_points) {
   double sum_error = 0;
@@ -420,22 +381,20 @@ protected:
     auto diff_y_1 = reprojected0.y() - point_0.y();
     auto diff_y_2 = reprojected1.y() - point_1.y();
 
-    fvec[0] = diff_x_1 * diff_x_1 + diff_y_1 + diff_y_1;
-    fvec[1] = diff_x_2 * diff_x_2 + diff_y_2 * diff_y_2;
+    fvec[0] = diff_x_1;
+    fvec[1] = diff_y_1;
+    fvec[2] = diff_x_2;
+    fvec[3] = diff_y_2;
     return 0;
   }
 };
 
 Vector3D reconstruct_nonlinear(const Matrix34 &M, const Matrix34 &M_prime,
-                               const Vector2D &p0, const Vector2D &p1) {
+                               const Vector2D &p0, const Vector2D &p1,
+                               const Vector3D init_guess) {
   Objective obj(4, 3, M, M_prime, p0, p1);
   Optimizer_LM lm;
-  std::vector<double> x = {4.0, -4.0, 4.0};
+  std::vector<double> x = {init_guess.x(), init_guess.y(), init_guess.z()};
   bool status = lm.optimize(&obj, x);
-  std::cout << "status: " << status << std::endl;
-  /// retrieve the result.
-  std::cout << "the solution is:     " << x[0] << ", " << x[1] << ", " << x[2]
-            << std::endl;
-
   return Vector3D(x[0], x[1], x[2]);
 }
