@@ -380,7 +380,6 @@ double check_matrix(const Matrix33 &Mat, std::vector<Vector2D> points_0,
   auto ave_error = sum_error / points_0.size();
   return ave_error;
 }
-
 double evaluate_3dcood(const Matrix34 &M, std::vector<Vector2D> original_points,
                        std::vector<Vector3D> reconstructed_points) {
   double sum_error = 0;
@@ -388,7 +387,7 @@ double evaluate_3dcood(const Matrix34 &M, std::vector<Vector2D> original_points,
     auto p = reconstructed_points[i];
     Vector3D reprojected_h = M * p.homogeneous();
     auto reprojected = reprojected_h.cartesian();
-    auto diff = (original_points[i] - reprojected).length2();
+    auto diff = norm(original_points[i] - reprojected);
     sum_error += diff;
   }
   double ave_error = sum_error / reconstructed_points.size();
@@ -415,21 +414,21 @@ protected:
     Vector2D reprojected0 = reprojected0_h.cartesian();
     Vector3D reprojected1_h = this->M_prime * estimated_point.homogeneous();
     Vector2D reprojected1 = reprojected1_h.cartesian();
+
     auto diff_x_1 = reprojected0.x() - point_0.x();
     auto diff_x_2 = reprojected1.x() - point_1.x();
     auto diff_y_1 = reprojected0.y() - point_0.y();
     auto diff_y_2 = reprojected1.y() - point_1.y();
 
-    fvec[0] = diff_x_1 * diff_x_1 + diff_x_2 * diff_x_2;
-    fvec[1] = diff_y_1 * diff_y_1 + diff_y_2 * diff_y_2;
-
+    fvec[0] = diff_x_1 * diff_x_1 + diff_y_1 + diff_y_1;
+    fvec[1] = diff_x_2 * diff_x_2 + diff_y_2 * diff_y_2;
     return 0;
   }
 };
 
 Vector3D reconstruct_nonlinear(const Matrix34 &M, const Matrix34 &M_prime,
                                const Vector2D &p0, const Vector2D &p1) {
-  Objective obj(3, 3, M, M_prime, p0, p1);
+  Objective obj(4, 3, M, M_prime, p0, p1);
   Optimizer_LM lm;
   std::vector<double> x = {4.0, -4.0, 4.0};
   bool status = lm.optimize(&obj, x);
